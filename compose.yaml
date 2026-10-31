@@ -1,0 +1,76 @@
+# TBH 多开编排（Wine 主线）
+# 每个服务 = 一个 Steam 账号 + 一个数据卷 + 一个 noVNC 端口
+# 用法：docker compose up -d --scale tbh=1（每实例需要不同的账号，故默认只留 tbh-1 模板）
+
+x-tbh-common: &tbh-common
+  image: ghcr.io/aewatw421/tbh-wine:latest
+  restart: unless-stopped
+  shm_size: "1g"
+  mem_limit: 5g
+  stop_grace_period: 30s
+  environment:
+    SCREEN: "1600x900x24"
+    PREINSTALL: "1"
+    AUTO_START_HELPER: "1"
+    USE_VIRTUAL_DESKTOP: "1"
+    ENABLE_DXVK: "0"
+    # VNC_PASSWORD: "change-me"
+
+services:
+  tbh-1:
+    <<: *tbh-common
+    container_name: tbh-1
+    environment:
+      SCREEN: "1600x900x24"
+      PREINSTALL: "1"
+      AUTO_START_HELPER: "1"
+      USE_VIRTUAL_DESKTOP: "1"
+      ENABLE_DXVK: "0"
+      STEAM_USER: "your_account_1"
+      STEAM_PASS: "your_password_1"
+      VNC_PASSWORD: "change-me"
+    volumes:
+      - ./data/inst1:/data
+    ports:
+      - "6081:6080"   # noVNC
+      - "5901:5900"   # VNC
+
+  # 复制下面的块并改端口/账号/卷即可多开（02 → 6082/5902，依此类推）
+  tbh-2:
+    <<: *tbh-common
+    container_name: tbh-2
+    environment:
+      SCREEN: "1600x900x24"
+      PREINSTALL: "1"
+      AUTO_START_HELPER: "1"
+      USE_VIRTUAL_DESKTOP: "1"
+      ENABLE_DXVK: "0"
+      STEAM_USER: "your_account_2"
+      STEAM_PASS: "your_password_2"
+      VNC_PASSWORD: "change-me"
+    volumes:
+      - ./data/inst2:/data
+    ports:
+      - "6082:6080"
+      - "5902:5900"
+    profiles: ["multi"]
+
+  # KVM 路线（需宿主机 /dev/kvm 与金盘，见 kvm/make-golden.md）
+  tbh-vm1:
+    image: ghcr.io/aewatw421/tbh-kvm:latest
+    container_name: tbh-vm1
+    restart: unless-stopped
+    devices:
+      - /dev/kvm
+    mem_limit: 10g
+    environment:
+      INSTANCE_NAME: inst1
+      VM_MEM_MB: "6144"
+      VM_CPUS: "4"
+      KEEP_OVERLAY: "1"
+    volumes:
+      - ./golden:/data/golden:ro
+      - ./data/vm1:/data/overlays
+    ports:
+      - "5910:5900"
+    profiles: ["kvm"]

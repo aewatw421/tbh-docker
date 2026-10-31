@@ -1,0 +1,75 @@
+name: build-wine-image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "wine/**"
+      - ".github/workflows/build-wine-image.yml"
+  workflow_dispatch:
+    inputs:
+      tbh_release:
+        description: "TBHHelper release tag"
+        required: false
+        default: "v1.4.2"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/tbh-wine
+  TBH_RELEASE: ${{ github.event.inputs.tbh_release || 'v1.4.2' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ env.TBH_RELEASE }}
+            type=sha,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: wine/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            TBH_RELEASE=${{ env.TBH_RELEASE }}
+            WINE_BRANCH=staging
+          cache-from: type=gha,scope=wine
+          cache-to: type=gha,mode=max,scope=wine
+          provenance: false
+
+      - name: Summary
+        run: |
+          {
+            echo "### tbh-wine 构建完成"
+            echo ""
+            echo "拉取：\`docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest\`"
+            echo ""
+            echo "运行见仓库 README「快速开始」。首次启动需通过 noVNC 完成 Steam 登录。"
+          } >> "$GITHUB_STEP_SUMMARY"
