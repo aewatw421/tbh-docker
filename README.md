@@ -25,58 +25,76 @@
 | **Wine 容器（本工程主线）** | ⚠ 可行，已交付；Frida×Wine 注入与游戏任务栏依赖为实测项 | `wine/` |
 | Linux 容器 + KVM Windows 金盘 | ✓ 最稳（与原生一致）；金盘需带 KVM 的宿主机做一次 | `kvm/` |
 
-## 快速开始（Wine 版）
+## 快速开始（Wine 版，推荐 compose）
 
-镜像由 GitHub Actions 构建并推送 GHCR：
-`ghcr.io/aewatw421/tbh-wine:latest`（Actions 里把包可见性改为 public，或 `docker login ghcr.io` 拉取）。
+镜像由 GitHub Actions 构建并推送 GHCR，已验证可匿名拉取：
+**`ghcr.io/aewatw421/tbh-wine:latest`**（约 1.47GB，压缩层合计）；KVM 运行器 **`ghcr.io/aewatw421/tbh-kvm:latest`**。
 
 ```bash
-# 1. 准备一个数据卷目录（Steam 数据 / wine prefix / 游戏全在这里）
-mkdir -p /srv/tbh/inst1 && cd /srv/tbh/inst1
+git clone https://github.com/aewatw421/tbh-docker && cd tbh-docker
 
-# 2. 起容器（首次进入需要通过 noVNC 完成 Steam 登录与 Steam Guard）
+# 1. 可选：填各实例的 Steam 凭据与 VNC 密码（留空则首次进 noVNC 手动登录）
+cp .env.example .env && vi .env
+
+# 2. 起单实例（数据落在 ./data/inst1，Steam/wine prefix/游戏/助手配置全在里面）
+docker compose up -d tbh-1
+
+# 3. 首次：浏览器打开 http://<host>:6081/vnc.html
+#    - 未填凭据时：登录 Steam，过一次 Steam Guard（ssfn 票据落盘后重启即免登录）
+#    - 确认库里有 TBH: Task Bar Hero（steamcmd 已匿名预装；失败就在商店点“安装”）
+#    - TBH助手 → 账号页「连接」→ 核对规则 →「一键开启」
+
+# 4. 自检：确认 Wine×Frida 链路是否打通
+docker compose exec tbh-1 /usr/local/bin/verify.sh
+```
+
+多开/运维/四种运行模式见下一节。
+
+### 裸 docker run（不用 compose 时）
+
+```bash
+mkdir -p /srv/tbh/inst1
 docker run -d --name tbh-1 \
-  -p 6080:6080 -p 5900:5900 \
+  -p 6081:6080 -p 5901:5900 \
   -v /srv/tbh/inst1:/data \
-  -e SCREEN=1600x900x24 \
-  -e PREINSTALL=1 \
-  --shm-size=1g --memory=5g \
-  --restart unless-stopped \
-  ghcr.io/aewatw421/tbh-wine:latest
-
-# 3. 浏览器打开 http://<host>:6080/vnc.html （或 VNC 客户端连 5900）
-#    - 首次：若未设 STEAM_USER/PASS，在 Steam 登录窗口手动登录，通过 Steam Guard
-#    - 登录一次后 ssfn/loginusers.vdf 已落盘 /data/prefix，之后容器重启自动免验证登录
-#    - 确认游戏出现在库中（steamcmd 预装失败时手动在商店点“安装”，下载完即持久化）
-#    - 打开 TBH助手，在“账号”页连接进程 → 配置规则 → 一键开启
-
-# 4. 之后提供凭据即可全自动（可选）：
-docker rm -f tbh-1
-docker run -d --name tbh-1 \
-  -v /srv/tbh/inst1:/data \
+  -e SCREEN=1600x900x24 -e PREINSTALL=1 \
   -e STEAM_USER=你的账号 -e STEAM_PASS=你的密码 \
-  -e AUTO_START_HELPER=1 \
-  -p 6080:6080 -p 5900:5900 --shm-size=1g --memory=5g \
+  -e AUTO_START_HELPER=1 --shm-size=1g --memory=5g \
   --restart unless-stopped \
   ghcr.io/aewatw421/tbh-wine:latest
 ```
 
-### 多开
+首次没有凭据就用 `-e STEAM_USER=`（空）并走 noVNC 手动登录；`docker rm -f tbh-1` 后带凭据重跑即可全自动。
 
-同账号多处登录会互踢，多开 = **每实例一个 Steam 账号 + 一个数据卷**：
+### 多开（compose，Wine 版）
+
+`compose.yaml` 专用于 Wine 路线：默认只起 `tbh-1`，`--profile multi` 起满 3 实例，`--profile ui` 附带 dozzle 日志面板。
 
 ```bash
-for i in 1 2 3; do
-  docker run -d --name tbh-$i \
-    -v /srv/tbh/inst$i:/data \
-    -e STEAM_USER=acct$i -e STEAM_PASS=pass$i \
-    -p 60$((8+i)):6080 -p 591$i:5900 \
-    --shm-size=1g --memory=5g --restart unless-stopped \
-    ghcr.io/aewatw421/tbh-wine:latest
-done
+cp .env.example .env && vi .env        # 填各实例 Steam 账号与 VNC 密码（.env 不进仓库）
+docker compose up -d tbh-1             # 单实例
+docker compose --profile multi up -d   # tbh-1 + tbh-2 + tbh-3
+docker compose --profile ui up -d      # + 日志面板 :9999
+
+docker compose exec tbh-1 /usr/local/bin/verify.sh   # 自检
+docker compose run --rm tbh-1 login    # 只起 Steam 供人工登录/装游戏/调助手（不自动开游戏）
+docker compose run --rm tbh-1 setup    # 预热卷（prefix + Steam + 游戏预装）后退出
+docker compose exec tbh-1 bash         # 进容器排查（组件日志在 /var/log/tbh/）
 ```
 
-或直接 `docker compose up -d --scale tbh=3`（见 `compose.yaml`）。
+端口规划：实例 N → noVNC `608N` / VNC `590N`（tbh-1=6081/5901，tbh-2=6082/5902，tbh-3=6083/5903）。
+同账号多处登录会互踢，**一实例必须一 Steam 账号**。
+
+### 四种运行模式（镜像内置）
+
+| 模式 | 命令 | 行为 |
+|---|---|---|
+| `run` | 默认 | 完整流程：显示栈 → prefix → Steam → 预装/启动游戏 → 启动助手 |
+| `login` | `docker compose run --rm tbh-1 login` | 只起显示栈与 Steam，供人工登录/装游戏/调助手设置 |
+| `setup` | `docker compose run --rm tbh-1 setup` | 预热：prefix + 字体 + Steam + steamcmd 预装后退出（适合 CI/批量预建卷） |
+| `shell` | `docker compose run --rm tbh-1 shell` | 起显示栈后进 bash，调试用（`DISPLAY=:99` 可直接 `wine` 跑任意 exe） |
+
+`login/setup/shell` 复用同一数据卷：先 `docker compose stop tbh-1` 再跑，避免两个容器同时操作同一个 wine prefix。
 
 ## 环境变量
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 容器内自检：确认 Wine×Frida 链路的每个环节状态（docker exec -it tbh-1 /usr/local/bin/verify.sh）
 set -uo pipefail
+LOG_DIR="${LOG_DIR:-/var/log/tbh}"
 
 pass=0; fail=0
 ok()  { echo "  ✅ $*"; pass=$((pass+1)); }
@@ -27,10 +28,10 @@ else
   bad "游戏未安装：noVNC 里在 Steam 安装 appid=${STEAM_APP_ID:-3678970}，或 docker run -e PREINSTALL=1 重启容器"
 fi
 GAME_PID=$(pgrep -f -i 'tbh.*\.exe|TaskBarHero|taskbar.*\.exe' | head -1)
-[ -n "$GAME_PID" ] && ok "游戏进程 pid=$GAME_PID" || bad "游戏进程不在（Steam 未登录或启动失败，看 /var/log/game.log）"
+[ -n "$GAME_PID" ] && ok "游戏进程 pid=$GAME_PID" || bad "游戏进程不在（Steam 未登录或启动失败，看 $LOG_DIR/game.log）"
 
 echo "== 4. Steam =="
-pgrep -f 'steam\.exe' >/dev/null && ok "Steam 客户端在跑" || bad "Steam 未运行（/var/log/steam.log）"
+pgrep -f 'steam\.exe' >/dev/null && ok "Steam 客户端在跑" || bad "Steam 未运行（$LOG_DIR/steam.log）"
 if [ -n "${WINEPREFIX:-}" ] && ls "$WINEPREFIX/drive_c/Program Files (x86)/Steam/config/"ssfn* >/dev/null 2>&1; then
   ok "已存在 ssfn 登录票据（下次自动登录免 Steam Guard）"
 else
@@ -38,20 +39,20 @@ else
 fi
 
 echo "== 5. 助手 =="
-pgrep -f 'TBH.*\.exe|助手' >/dev/null 2>&1 && ok "助手进程在跑" || bad "助手未运行（AUTO_START_HELPER=${AUTO_START_HELPER:-1}，看 /var/log/helper.log）"
+pgrep -f 'TBH.*\.exe|助手' >/dev/null 2>&1 && ok "助手进程在跑" || bad "助手未运行（AUTO_START_HELPER=${AUTO_START_HELPER:-1}，看 $LOG_DIR/helper.log）"
 [ -d /opt/tbh ] && inf "助手文件：$(ls /opt/tbh | head -5 | tr '\n' ' ')…"
 
 echo "== 6. Frida 注入判据（关键未知数） =="
-if [ -f /var/log/helper.log ] && grep -qE "已连接游戏进程|连接成功|账号页" /var/log/helper.log; then
+if [ -f $LOG_DIR/helper.log ] && grep -qE "已连接游戏进程|连接成功|账号页" $LOG_DIR/helper.log; then
   ok "助手报告已连接游戏进程 → Wine×Frida 注入链路可用 🎉"
-elif [ -f /var/log/helper.log ] && grep -qiE "operation not supported|permission denied|ptrace|attach.*fail|注入失败" /var/log/helper.log; then
+elif [ -f $LOG_DIR/helper.log ] && grep -qiE "operation not supported|permission denied|ptrace|attach.*fail|注入失败" $LOG_DIR/helper.log; then
   bad "检测到 attach 失败特征 → 改走 KVM 金盘路线（kvm/make-golden.md）"
 else
   inf "helper.log 无明确连接判据：在 noVNC 里看助手「账号」页是否列出进程与用户名"
 fi
-ls /var/log/*.log 2>/dev/null | sed 's/^/      /'
+ls $LOG_DIR/*.log 2>/dev/null | sed 's/^/      /'
 
 echo
 echo "结果：$pass 项通过，$fail 项失败"
-[ "$fail" = 0 ] || echo "排障顺序：/var/log/{steam,game,helper,x11vnc}.log → README『已知未知数』"
+[ "$fail" = 0 ] || echo "排障顺序：$LOG_DIR/{steam,game,helper,x11vnc}.log → README『已知未知数』"
 exit 0

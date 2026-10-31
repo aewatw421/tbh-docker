@@ -1,76 +1,137 @@
-# TBH 多开编排（Wine 主线）
-# 每个服务 = 一个 Steam 账号 + 一个数据卷 + 一个 noVNC 端口
-# 用法：docker compose up -d --scale tbh=1（每实例需要不同的账号，故默认只留 tbh-1 模板）
+# TBH: Task Bar Hero + TBHHelper — Wine 版 Docker Compose
+# ============================================================
+# 多开 = 复制 tbh-N 服务块（一实例 = 一 Steam 账号 = 一数据卷 = 一组端口）
+#
+# 快速开始：
+#   1. 准备 .env（可选，没有则首次在 noVNC 里手动登录 Steam）
+#      cp .env.example .env && vi .env
+#   2. docker compose up -d tbh-1
+#   3. 浏览器打开 http://<host>:6081/vnc.html
+#      - 首次：登录 Steam、通过 Steam Guard（票据持久化到 ./data/inst1，之后免登录）
+#      - 确认 Steam 库中有 TBH: Task Bar Hero（steamcmd 已匿名预装）
+#      - 打开 TBH助手 → 账号页「连接」→ 核对规则 → 「一键开启」
+#   4. 自检：docker compose exec tbh-1 /usr/local/bin/verify.sh
+#
+# 常用运维：
+#   docker compose logs -f tbh-1          # 入口日志
+#   docker compose restart tbh-1          # 重启（保留登录态/游戏进度）
+#   docker compose exec tbh-1 bash        # 进容器排查（/var/log/*.log）
+#   docker compose stop tbh-1             # 优雅停止（SIGTERM → wineserver -k）
 
-x-tbh-common: &tbh-common
-  image: ghcr.io/aewatw421/tbh-wine:latest
+x-tbh-wine-common: &tbh-wine-common
+  image: ${TBH_WINE_IMAGE:-ghcr.io/aewatw421/tbh-wine:latest}
   restart: unless-stopped
-  shm_size: "1g"
-  mem_limit: 5g
-  stop_grace_period: 30s
-  environment:
-    SCREEN: "1600x900x24"
-    PREINSTALL: "1"
-    AUTO_START_HELPER: "1"
-    USE_VIRTUAL_DESKTOP: "1"
-    ENABLE_DXVK: "0"
-    # VNC_PASSWORD: "change-me"
+  stop_grace_period: 40s
+  shm_size: "1g"           # Wine/Steam 需要较大的 /dev/shm
+  mem_limit: ${TBH_MEM_LIMIT:-5g}
+  cpus: ${TBH_CPUS:-4}
+  healthcheck:
+    test: ["CMD", "/usr/local/bin/health.sh"]
+    interval: 60s
+    timeout: 10s
+    start_period: 150s
+    retries: 3
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
 
 services:
+  # ------------------------------------------------------------
+  # 实例 1（默认启用）
+  # ------------------------------------------------------------
   tbh-1:
-    <<: *tbh-common
+    <<: *tbh-wine-common
     container_name: tbh-1
     environment:
-      SCREEN: "1600x900x24"
-      PREINSTALL: "1"
-      AUTO_START_HELPER: "1"
-      USE_VIRTUAL_DESKTOP: "1"
-      ENABLE_DXVK: "0"
-      STEAM_USER: "your_account_1"
-      STEAM_PASS: "your_password_1"
-      VNC_PASSWORD: "change-me"
+      SCREEN: "1600x900x24"        # Xvfb 虚拟屏 宽x高x色深
+      VD_SIZE: "1600x900"          # Wine 虚拟桌面尺寸（任务栏游戏更稳）
+      PREINSTALL: "1"              # steamcmd 匿名预装 app 3678970
+      AUTO_START_HELPER: "1"       # Steam 就绪后自动拉起 TBH助手
+      HELPER_DELAY: "25"           # 启动助手前等待秒数
+      USE_VIRTUAL_DESKTOP: "1"     # wine explorer /desktop=
+      ENABLE_DXVK: "0"             # 渲染异常时改 1（D3D11→Vulkan/lavapipe）
+      STEAM_USER: "${STEAM_USER_1:-}"
+      STEAM_PASS: "${STEAM_PASS_1:-}"
+      STEAM_ARGS: "-silent -noreactlogin"
+      VNC_PASSWORD: "${VNC_PASSWORD_1:-}"
+      WINEDEBUG: "-all"
+      TZ: "${TZ:-Asia/Shanghai}"
     volumes:
-      - ./data/inst1:/data
+      - ./data/inst1:/data         # Steam 数据 / wine prefix / 游戏 / 助手配置全在这
+      - ./logs/inst1:/var/log/tbh  # 组件日志旁路出来便于查看
     ports:
-      - "6081:6080"   # noVNC
-      - "5901:5900"   # VNC
+      - "6081:6080"                # noVNC（浏览器）
+      - "5901:5900"                # VNC（客户端）
 
-  # 复制下面的块并改端口/账号/卷即可多开（02 → 6082/5902，依此类推）
+  # ------------------------------------------------------------
+  # 实例 2 —— docker compose --profile multi up -d
+  # 注意：必须换第二个 Steam 账号，同号多开互踢并触发风控
+  # ------------------------------------------------------------
   tbh-2:
-    <<: *tbh-common
+    <<: *tbh-wine-common
     container_name: tbh-2
+    profiles: ["multi"]
     environment:
       SCREEN: "1600x900x24"
+      VD_SIZE: "1600x900"
       PREINSTALL: "1"
       AUTO_START_HELPER: "1"
+      HELPER_DELAY: "25"
       USE_VIRTUAL_DESKTOP: "1"
       ENABLE_DXVK: "0"
-      STEAM_USER: "your_account_2"
-      STEAM_PASS: "your_password_2"
-      VNC_PASSWORD: "change-me"
+      STEAM_USER: "${STEAM_USER_2:-}"
+      STEAM_PASS: "${STEAM_PASS_2:-}"
+      STEAM_ARGS: "-silent -noreactlogin"
+      VNC_PASSWORD: "${VNC_PASSWORD_2:-}"
+      WINEDEBUG: "-all"
+      TZ: "${TZ:-Asia/Shanghai}"
     volumes:
       - ./data/inst2:/data
+      - ./logs/inst2:/var/log/tbh
     ports:
       - "6082:6080"
       - "5902:5900"
-    profiles: ["multi"]
 
-  # KVM 路线（需宿主机 /dev/kvm 与金盘，见 kvm/make-golden.md）
-  tbh-vm1:
-    image: ghcr.io/aewatw421/tbh-kvm:latest
-    container_name: tbh-vm1
-    restart: unless-stopped
-    devices:
-      - /dev/kvm
-    mem_limit: 10g
+  # ------------------------------------------------------------
+  # 实例 3 —— docker compose --profile multi up -d
+  # ------------------------------------------------------------
+  tbh-3:
+    <<: *tbh-wine-common
+    container_name: tbh-3
+    profiles: ["multi"]
     environment:
-      INSTANCE_NAME: inst1
-      VM_MEM_MB: "6144"
-      VM_CPUS: "4"
-      KEEP_OVERLAY: "1"
+      SCREEN: "1600x900x24"
+      VD_SIZE: "1600x900"
+      PREINSTALL: "1"
+      AUTO_START_HELPER: "1"
+      HELPER_DELAY: "25"
+      USE_VIRTUAL_DESKTOP: "1"
+      ENABLE_DXVK: "0"
+      STEAM_USER: "${STEAM_USER_3:-}"
+      STEAM_PASS: "${STEAM_PASS_3:-}"
+      STEAM_ARGS: "-silent -noreactlogin"
+      VNC_PASSWORD: "${VNC_PASSWORD_3:-}"
+      WINEDEBUG: "-all"
+      TZ: "${TZ:-Asia/Shanghai}"
     volumes:
-      - ./golden:/data/golden:ro
-      - ./data/vm1:/data/overlays
+      - ./data/inst3:/data
+      - ./logs/inst3:/var/log/tbh
     ports:
-      - "5910:5900"
-    profiles: ["kvm"]
+      - "6083:6080"
+      - "5903:5900"
+
+  # ------------------------------------------------------------
+  # 观察面板（可选）—— docker compose --profile ui up -d
+  # dozzle 实时查看各实例日志；noVNC 看画面，这里看文字日志
+  # ------------------------------------------------------------
+  logs-ui:
+    image: amir20/dozzle:latest
+    container_name: tbh-logs
+    profiles: ["ui"]
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "9999:8080"

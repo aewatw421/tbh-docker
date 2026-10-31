@@ -49,8 +49,9 @@ RUN set -eux; \
 
 # ---- TBHHelper 直连版 ----
 COPY wine/unpack-helper.py /usr/local/bin/unpack-helper.py
-COPY wine/entrypoint.sh wine/preinstall-game.sh wine/install-dxvk.sh wine/verify.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/preinstall-game.sh /usr/local/bin/install-dxvk.sh /usr/local/bin/verify.sh
+COPY wine/entrypoint.sh wine/preinstall-game.sh wine/install-dxvk.sh wine/verify.sh wine/health.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/preinstall-game.sh /usr/local/bin/install-dxvk.sh \
+      /usr/local/bin/verify.sh /usr/local/bin/health.sh
 
 ADD https://github.com/buguniaoOVO/TBHHelper/releases/download/${TBH_RELEASE}/TBHHelper-${TBH_RELEASE}.zip /tmp/tbh.zip
 RUN set -eux; \
@@ -65,8 +66,8 @@ EXPOSE 5900 6080
 VOLUME ["/data"]
 WORKDIR /data
 
-HEALTHCHECK --interval=60s --timeout=10s --start-period=120s --retries=2 \
-  CMD pgrep -f Xvfb >/dev/null || exit 1
+HEALTHCHECK --interval=60s --timeout=10s --start-period=150s --retries=3 \
+  CMD ["/usr/local/bin/health.sh"]
 
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]
