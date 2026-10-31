@@ -1,0 +1,16 @@
+MIT License
+
+Copyright (c) 2026 aewatw421
+
+本许可仅覆盖本仓库中的原创容器编排代码（Dockerfile / entrypoint / 构建脚本 / 工作流 / 文档）。
+
+下列内容**不在本许可范围内**，遵循各自的权利与许可：
+
+- TBH: Task Bar Hero 游戏本体 —— Valve Corporation / 开发者所有；通过 Steam 分发，需遵守 Steam 订户协议
+- TBHHelper 助手程序 —— 见其仓库 LICENSE / NOTICE.md（MIT 仅覆盖 Awan 新增代码，
+  `com.lulu` 历史代码为反编译继承，另有归属）；本镜像仅原样分发其公开 release 包
+- Wine、Steam、DXVK、Ubuntu、QEMU 等第三方组件遵循上游许可
+- Steam 商标与 Valve 版权内容不属于本仓库
+
+使用本镜像即表示你自行确认：拥有或已获授权使用上述游戏与账号，并接受游戏
+服务端的行为监控风险（自动化可能导致账号处置，与本项目无关）。

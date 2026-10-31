@@ -49,8 +49,8 @@ RUN set -eux; \
 
 # ---- TBHHelper 直连版 ----
 COPY wine/unpack-helper.py /usr/local/bin/unpack-helper.py
-COPY wine/entrypoint.sh wine/preinstall-game.sh wine/install-dxvk.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/preinstall-game.sh /usr/local/bin/install-dxvk.sh
+COPY wine/entrypoint.sh wine/preinstall-game.sh wine/install-dxvk.sh wine/verify.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/preinstall-game.sh /usr/local/bin/install-dxvk.sh /usr/local/bin/verify.sh
 
 ADD https://github.com/buguniaoOVO/TBHHelper/releases/download/${TBH_RELEASE}/TBHHelper-${TBH_RELEASE}.zip /tmp/tbh.zip
 RUN set -eux; \
