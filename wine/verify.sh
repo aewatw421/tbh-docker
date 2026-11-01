@@ -18,14 +18,19 @@ wine --version >/dev/null 2>&1 && ok "wine $(wine --version 2>/dev/null | head -
 [ -f "${WINEPREFIX:-/data/prefix}/system.reg" ] && ok "prefix 已初始化" || bad "prefix 缺失"
 
 echo "== 3. 游戏内容 =="
-GAMES_DIR="${GAMES_DIR:-/data/prefix/drive_c/games/tbh}"
-if [ -f "$GAMES_DIR/GameAssembly.dll" ]; then
-  SZ=$(stat -c %s "$GAMES_DIR/GameAssembly.dll")
-  ok "GameAssembly.dll 存在，磁盘大小 $SZ"
+GAME_DIR=""
+for d in "${GAMES_DIR:-/data/prefix/drive_c/games/tbh}" \
+         "${WINEPREFIX:-/data/prefix}/drive_c/Program Files (x86)/Steam/steamapps/common"/*/; do
+  if [ -f "$d/GameAssembly.dll" ]; then GAME_DIR="${d%/}"; break; fi
+done
+if [ -n "$GAME_DIR" ]; then
+  SZ=$(stat -c %s "$GAME_DIR/GameAssembly.dll")
+  ok "GameAssembly.dll 存在（$(basename "$GAME_DIR")），磁盘大小 $SZ"
   inf "助手 JS 校验的是**进程内 SizeOfImage**（期望 114753536），与磁盘大小不同；"
   inf "若助手日志出现『当前游戏版本未校验』，说明 Wine 下模块尺寸上报与 Windows 不一致 → 走 KVM 路线"
 else
-  bad "游戏未安装：noVNC 里在 Steam 安装 appid=${STEAM_APP_ID:-3678970}，或 docker run -e PREINSTALL=1 重启容器"
+  bad "游戏未安装：F2P 内容也需账号 license（匿名 steamcmd 必报 No subscription）"
+  inf "两条路：① .env 填 STEAM_USER_1/STEAM_PASS_1 让 steamcmd 拉包；② noVNC 登录 Steam 后自动 steam://install/${STEAM_APP_ID:-3678970}"
 fi
 GAME_PID=$(pgrep -f -i 'tbh.*\.exe|TaskBarHero|taskbar.*\.exe' | head -1)
 [ -n "$GAME_PID" ] && ok "游戏进程 pid=$GAME_PID" || bad "游戏进程不在（Steam 未登录或启动失败，看 $LOG_DIR/game.log）"

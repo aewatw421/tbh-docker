@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# steamcmd 匿名预装 TBH (appid 3678970，免费游戏) 并注册进 Steam 客户端库
+# steamcmd 预装 TBH (appid 3678970)
+# 注意：F2P 游戏 depot 也要求账号 license（anonymous 会报 No subscription），
+# 因此必须提供 STEAM_USER/STEAM_PASS；Steam Guard 开启的账号 steamcmd 可能要验证码，
+# 失败时由 Steam 客户端 steam://install 兜底（entrypoint.ensure_game）。
 set -uo pipefail
 
 LOG() { echo "[tbh][preinstall] $*"; }
@@ -9,13 +12,18 @@ LOG() { echo "[tbh][preinstall] $*"; }
 : "${GAMES_DIR:=$WINEPREFIX/drive_c/games/tbh}"
 STEAM_DIR="${STEAM_DIR:-$WINEPREFIX/drive_c/Program Files (x86)/Steam}"
 
+if [ -z "${STEAM_USER:-}" ]; then
+  LOG "无 STEAM_USER：匿名无法下载（No subscription），退出交由客户端安装"
+  exit 3
+fi
+
 mkdir -p "$GAMES_DIR"
 
-LOG "steamcmd 拉取（免费游戏，匿名即可）"
+LOG "steamcmd 账号登录拉取（Guard 账号可能需要验证码，失败属正常）"
 /opt/steamcmd/steamcmd.sh \
   +@sSteamCmdForcePlatformType windows \
   +force_install_dir "$GAMES_DIR" \
-  +login anonymous \
+  +login "$STEAM_USER" "$STEAM_PASS" \
   +app_update "$STEAM_APP_ID" validate \
   +quit
 RC=$?

@@ -101,8 +101,9 @@ docker compose exec tbh-1 bash         # 进容器排查（组件日志在 /var/
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `SCREEN` | `1600x900x24` | Xvfb 虚拟屏（宽x高x色深） |
-| `PREINSTALL` | `1` | 启动时用 steamcmd 匿名预装游戏到 `C:\games\tbh` 并注册进 Steam 客户端 |
-| `STEAM_USER` / `STEAM_PASS` | 空 | 自动登录 Steam；留空则 noVNC 手动登录一次（之后持久化免登录） |
+| `PREINSTALL` | `1` | 提供 STEAM_USER/PASS 时用 steamcmd 预装到 `C:\games\tbh`；**F2P 内容也需要账号 license，匿名登录必报 `No subscription`** |
+| `STEAM_USER` / `STEAM_PASS` | 空 | 自动登录 Steam 与 steamcmd 拉包；留空则 noVNC 手动登录一次（之后持久化免登录） |
+| `GAME_WAIT_SEC` | `2400` | 登录后自动触发 `steam://install/<appid>` 并等待下载完成的最长秒数；每 5 分钟重触发一次 |
 | `STEAM_ARGS` | `-silent -noreactlogin` | Steam 客户端附加参数 |
 | `AUTO_START_HELPER` | `1` | Steam 就绪后自动拉起 TBH助手 |
 | `HELPER_DELAY` | `25` | 启动助手前等待秒数（等游戏进主界面） |
@@ -147,6 +148,7 @@ docker run -d --name tbh-vm1 \
    桌面（`/desktop=`）提供同名窗口类，大概率兼容；实测时优先 `USE_VIRTUAL_DESKTOP=1`。
 3. **DX11 渲染** —— 默认 wined3d+GL(llvmpipe)；像素 2D 负载低，软渲染可行。异常换 `ENABLE_DXVK=1`。
 4. **Steam 自动登录** —— 需先手动登录一次让 `ssfn*` 落盘；账号开了手机令牌的首次要输一次码。
+   - **F2P 也要 license**：steamcmd `+login anonymous` 下载 app 3678970 必报 `No subscription`，这是 Steam 的 depot 授权机制，不是网络问题；有凭据时 steamcmd 走账号登录（Guard 账号可能被要验证码，失败则由客户端 `steam://install` 兜底，容器会自动等待下载完成再启动游戏）。
 5. **游戏自动更新** —— F2P 强更：Steam 客户端挂着会自动更；`PREINSTALL` 只负责首次落地。
 
 ## 风险声明（工程事实）
