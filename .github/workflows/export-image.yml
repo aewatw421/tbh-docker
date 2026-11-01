@@ -58,6 +58,7 @@ jobs:
       - name: Publish to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}   # gh 无需 git 仓库即可定位 repo
         run: |
           set -euo pipefail
           REL="image-${TAG}"
