@@ -1,0 +1,82 @@
+name: export-image
+
+# 把 GHCR 镜像导出成 zstd 分片，发到本仓库 Release：
+# 用户侧可用 wget -c 断点续传（docker pull 不支持续传，这是不稳网络的兜底）
+#   cat tbh-wine.tar.zst.part-* | zstd -d | docker load
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "image tag to export"
+        required: false
+        default: "latest"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/export-image.yml"
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || 'latest' }}
+    steps:
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" 2>/dev/null || true
+          df -h /
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Pull image
+        run: |
+          IMG="ghcr.io/${{ github.repository_owner }}/tbh-wine:${TAG}"
+          for i in 1 2 3; do
+            docker pull "$IMG" && break || { echo "pull retry $i"; sleep 10; }
+          done
+          docker images | head -5
+
+      - name: Save / compress / split
+        run: |
+          set -euo pipefail
+          IMG="ghcr.io/${{ github.repository_owner }}/tbh-wine:${TAG}"
+          sudo apt-get update -qq && sudo apt-get install -y -qq zstd >/dev/null
+          echo "saving $IMG ..."
+          docker save "$IMG" | zstd -T0 -3 -o tbh-wine.tar.zst
+          ls -lh tbh-wine.tar.zst
+          split -b 900M -d -a 1 tbh-wine.tar.zst tbh-wine.tar.zst.part-
+          sha256sum tbh-wine.tar.zst.part-* > SHA256SUMS.txt
+          ls -lh tbh-wine.tar.zst.part-* SHA256SUMS.txt
+          df -h /
+
+      - name: Publish to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REL="image-${TAG}"
+          {
+            echo "## tbh-wine ($TAG) 离线镜像分片"
+            echo ""
+            echo "构建来源：${{ github.sha }}"
+            echo ""
+            echo '```bash'
+            echo "# 下载（wget -c 可断点续传）"
+            echo "wget -c https://github.com/${{ github.repository }}/releases/download/${REL}/tbh-wine.tar.zst.part-0"
+            echo "wget -c https://github.com/${{ github.repository }}/releases/download/${REL}/tbh-wine.tar.zst.part-1"
+            echo "# 或全部："
+            echo "for f in tbh-wine.tar.zst.part-*; do wget -c https://github.com/${{ github.repository }}/releases/download/${REL}/\$f; done"
+            echo ""
+            echo "sha256sum -c SHA256SUMS.txt"
+            echo "cat tbh-wine.tar.zst.part-* | zstd -d | docker load"
+            echo '```'
+          } > NOTES.md
+          gh release view "$REL" >/dev/null 2>&1 || gh release create "$REL" --title "tbh-wine image $TAG (offline parts)" --notes-file NOTES.md
+          gh release upload "$REL" tbh-wine.tar.zst.part-* SHA256SUMS.txt --clobber
+          gh release view "$REL" --json assets --jq '.assets[] | "\(.name)\t\(.size)"'
